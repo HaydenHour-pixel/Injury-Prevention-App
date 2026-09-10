@@ -51,6 +51,7 @@ export function NumberField({
         inputMode={integer ? "numeric" : "decimal"}
         value={text}
         placeholder={placeholder}
+        aria-label={label}
         onChange={(e) => handleChange(e.target.value)}
         className="h-11 w-full rounded border border-border bg-canvas px-3 text-base text-ink"
       />

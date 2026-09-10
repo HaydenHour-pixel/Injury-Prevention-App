@@ -55,6 +55,16 @@ class DailyEntry(CreatedAtMixin, Base):
     )
     date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
 
+    # --- Symptom acknowledgment (spec.md section 4). ---
+    # NULL = not answered. True = the athlete explicitly confirmed no pain
+    # that day. Deliberately not a symptom row with intensity 0 — a sentinel
+    # there would leak into escalation trends, pain_profile grouping, and the
+    # trailing-3d max in spec.md section 5.5. There is no False: the only
+    # ways this changes are an explicit confirmation (-> True) or a symptom
+    # being logged for the date, which clears a prior confirmation back to
+    # NULL (see app/api/symptoms.py).
+    no_pain_confirmed: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+
     # --- Dimension scores (spec.md section 5). Populated by slice 2. ---
     sleep_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     nutrition_score: Mapped[float | None] = mapped_column(Float, nullable=True)

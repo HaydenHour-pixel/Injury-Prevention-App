@@ -34,6 +34,17 @@ class SymptomUpdate(BaseModel):
     pain_profile_id: int | None = None
 
 
+class NoPainConfirmedUpdate(BaseModel):
+    # Required, not optional: this endpoint exists to set exactly this field.
+    # true confirms no pain for the date; null clears a prior confirmation.
+    no_pain_confirmed: bool | None
+
+
+class NoPainConfirmedRead(ORMModel):
+    date: dt.date
+    no_pain_confirmed: bool | None
+
+
 class SymptomRead(ORMModel):
     id: int
     daily_entry_id: int | None

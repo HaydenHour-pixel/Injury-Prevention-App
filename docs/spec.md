@@ -160,7 +160,17 @@ Absence is not zero.
 | No recovery done, logged as such | `recovery_method` row, `method_type = 'none'` |
 | Recovery section never opened | no `recovery_method` row for that date |
 | Nutrition not logged | no `nutrition` row |
-| No pain | `daily_entry` exists, no `symptom` rows |
+| No pain, confirmed | `daily_entry.no_pain_confirmed = true`, no `symptom` rows |
+| Symptoms not yet answered for the day | `daily_entry.no_pain_confirmed` is `NULL`, no `symptom` rows |
+
+`no_pain_confirmed` exists because symptoms are the calibration labels (section 10): an
+unlogged painful day and an explicitly-confirmed pain-free day must not collapse into the
+same "no symptom rows" state, or an unlogged day of real pain reads as outcome `none` and
+calibrates the model to be *less* sensitive. It is never set to `false` — only `NULL`
+(unanswered) or `true` (confirmed). Logging any symptom for the date clears a standing
+`true` back to `NULL`, since the new report contradicts the earlier answer. It is not
+represented as a `symptom` row with intensity 0: a sentinel there would leak into
+escalation trends, `pain_profile` grouping, and the trailing-3d max in section 5.5.
 
 Scoring functions return `None` for absent inputs. The caller decides how to handle it.
 Never substitute 0. A missing nutrition log is not a day of zero protein.

@@ -2,6 +2,7 @@ import { getBackendUrl } from "../lib/backendUrl";
 import type {
   DayResponse,
   DaySummary,
+  NoPainConfirmedRead,
   NutritionCreate,
   NutritionRead,
   NutritionUpdate,
@@ -123,4 +124,14 @@ export function updateSymptom(id: number, payload: SymptomUpdate): Promise<Sympt
 
 export function deleteSymptom(id: number): Promise<void> {
   return request(`/api/symptoms/${id}`, { method: "DELETE" });
+}
+
+export function setNoPainConfirmed(
+  date: string,
+  value: boolean | null,
+): Promise<NoPainConfirmedRead> {
+  return request(`/api/days/${date}/no-pain-confirmed`, {
+    method: "PATCH",
+    body: JSON.stringify({ no_pain_confirmed: value }),
+  });
 }

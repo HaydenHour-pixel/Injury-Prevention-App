@@ -27,10 +27,16 @@ from app.api.deps import (
 )
 from app.config import ATHLETE_TIMEZONE
 from app.db import get_db
-from app.models import Athlete, Symptom
+from app.models import Athlete, DailyEntry, Symptom
 from app.models.enums import DataSource
 from app.provenance import FieldGroup, recall_confidence, source_confidence
-from app.schemas.symptom import SymptomCreate, SymptomRead, SymptomUpdate
+from app.schemas.symptom import (
+    NoPainConfirmedRead,
+    NoPainConfirmedUpdate,
+    SymptomCreate,
+    SymptomRead,
+    SymptomUpdate,
+)
 
 router = APIRouter(tags=["symptoms"])
 
@@ -51,6 +57,11 @@ def create_symptom(
 
     try:
         entry = get_or_create_daily_entry(db, athlete, date)
+        # A new symptom report contradicts an earlier "no pain" confirmation
+        # for the same date — clear it back to NULL rather than leave a
+        # confirmed-no-pain flag standing alongside a logged symptom.
+        if entry.no_pain_confirmed:
+            entry.no_pain_confirmed = None
         row = Symptom(
             athlete_id=athlete.id,
             daily_entry_id=entry.id,
@@ -79,6 +90,35 @@ def create_symptom(
 
     db.refresh(row)
     return row
+
+
+@router.patch("/days/{date}/no-pain-confirmed", response_model=NoPainConfirmedRead)
+def set_no_pain_confirmed(
+    date: dt.date,
+    payload: NoPainConfirmedUpdate,
+    db: Session = Depends(get_db),
+    athlete: Athlete = Depends(get_current_athlete),
+) -> DailyEntry:
+    """Persists the "no pain today" acknowledgment (spec.md section 4). An
+    unlogged painful day must not be able to read, at calibration time, the
+    same as an explicit "no pain" answer — see spec.md section 10.
+    """
+    assert_date_not_too_far_future(date)
+
+    entry = get_or_create_daily_entry(db, athlete, date)
+
+    if payload.no_pain_confirmed:
+        existing_symptom = db.query(Symptom).filter_by(athlete_id=athlete.id, date=date).first()
+        if existing_symptom is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="symptoms already logged for this date; cannot confirm no pain",
+            )
+
+    entry.no_pain_confirmed = payload.no_pain_confirmed
+    db.commit()
+    db.refresh(entry)
+    return entry
 
 
 @router.patch("/symptoms/{symptom_id}", response_model=SymptomRead)

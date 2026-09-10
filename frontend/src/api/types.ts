@@ -173,7 +173,15 @@ export interface DayResponse {
   nutrition: NutritionRead | null;
   recovery: RecoveryRead[];
   symptoms: SymptomRead[];
+  // null = not answered, true = athlete confirmed no pain that day. Cleared
+  // back to null by logging any symptom for the date (spec.md section 4).
+  no_pain_confirmed: boolean | null;
   completeness: Completeness;
+}
+
+export interface NoPainConfirmedRead {
+  date: string;
+  no_pain_confirmed: boolean | null;
 }
 
 export interface DaySummary {

@@ -12,6 +12,7 @@ function dayWith(nutrition: NutritionRead | null): DayResponse {
     recovery: [],
     symptoms: [],
     nutrition,
+    no_pain_confirmed: null,
     completeness: {
       training: false,
       sleep: false,

@@ -27,6 +27,7 @@ describe("getDay", () => {
       training: [],
       sleep: [],
       nutrition: null,
+      no_pain_confirmed: null,
       symptoms: [],
       recovery: [
         {
@@ -72,6 +73,7 @@ describe("getDay", () => {
       training: [],
       sleep: [],
       nutrition: null,
+      no_pain_confirmed: null,
       symptoms: [],
       recovery: [],
       completeness: {

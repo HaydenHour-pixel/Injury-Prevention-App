@@ -44,7 +44,13 @@ export function DayView({ date, onNavigate }: { date: string; onNavigate: (date:
             onSaved={reload}
           />
           <RecoveryCard key={`recovery-${date}`} date={date} rows={day.recovery} onSaved={reload} />
-          <SymptomsCard key={`symptoms-${date}`} date={date} rows={day.symptoms} onSaved={reload} />
+          <SymptomsCard
+            key={`symptoms-${date}`}
+            date={date}
+            rows={day.symptoms}
+            noPainConfirmed={day.no_pain_confirmed}
+            onSaved={reload}
+          />
         </div>
       )}
     </div>

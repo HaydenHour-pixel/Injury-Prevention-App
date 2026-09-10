@@ -35,9 +35,10 @@ def get_day(
     db: Session = Depends(get_db),
     athlete: Athlete = Depends(get_current_athlete),
 ) -> DayResponse:
-    daily_entry_exists = (
-        db.query(DailyEntry).filter_by(athlete_id=athlete.id, date=date).first() is not None
-    )
+    entry = db.query(DailyEntry).filter_by(athlete_id=athlete.id, date=date).first()
+    daily_entry_exists = entry is not None
+    no_pain_confirmed = entry.no_pain_confirmed if entry is not None else None
+
     training_rows = db.query(Training).filter_by(athlete_id=athlete.id, date=date).all()
     sleep_rows = db.query(Sleep).filter_by(athlete_id=athlete.id, date=date).all()
     # Singleton per day (see app/api/nutrition.py); most-recent guards against
@@ -59,12 +60,15 @@ def get_day(
         nutrition=NutritionRead.model_validate(nutrition_row) if nutrition_row else None,
         recovery=[RecoveryRead.model_validate(r) for r in recovery_rows],
         symptoms=[SymptomRead.model_validate(r) for r in symptom_rows],
+        no_pain_confirmed=no_pain_confirmed,
         completeness=Completeness(
             training=len(training_rows) > 0,
             sleep=len(sleep_rows) > 0,
             nutrition=nutrition_row is not None,
             recovery=len(recovery_rows) > 0,
-            symptoms=len(symptom_rows) > 0,
+            # spec.md section 4: an explicit "no pain" confirmation is as
+            # complete an answer for the section as a logged symptom.
+            symptoms=len(symptom_rows) > 0 or no_pain_confirmed is True,
         ),
     )
 
@@ -101,6 +105,16 @@ def get_days_range(
     nutrition_dates = dates_with(Nutrition)
     recovery_dates = dates_with(RecoveryMethod)
     symptom_dates = dates_with(Symptom)
+    no_pain_dates = {
+        row[0]
+        for row in db.query(DailyEntry.date)
+        .filter(
+            DailyEntry.athlete_id == athlete.id,
+            DailyEntry.date.between(start, end),
+            DailyEntry.no_pain_confirmed.is_(True),
+        )
+        .all()
+    }
 
     return [
         DaySummary(
@@ -111,7 +125,7 @@ def get_days_range(
                 sleep=day in sleep_dates,
                 nutrition=day in nutrition_dates,
                 recovery=day in recovery_dates,
-                symptoms=day in symptom_dates,
+                symptoms=(day in symptom_dates) or (day in no_pain_dates),
             ),
         )
         for day in (start + dt.timedelta(days=i) for i in range(span_days))

@@ -154,6 +154,58 @@ def test_failed_section_insert_rolls_back_daily_entry_creation(client, test_db):
     db.close()
 
 
+def test_no_pain_confirmed_round_trips_and_null_is_distinguishable_from_true(client):
+    unanswered_date = today()
+    confirmed_date = today() - dt.timedelta(days=1)
+
+    unanswered = client.get(f"/api/days/{unanswered_date}").json()
+    assert unanswered["no_pain_confirmed"] is None
+
+    resp = client.patch(
+        f"/api/days/{confirmed_date}/no-pain-confirmed", json={"no_pain_confirmed": True}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["no_pain_confirmed"] is True
+
+    confirmed = client.get(f"/api/days/{confirmed_date}").json()
+    assert confirmed["no_pain_confirmed"] is True
+    # A different, untouched date must still read NULL, not inherit True.
+    assert client.get(f"/api/days/{unanswered_date}").json()["no_pain_confirmed"] is None
+
+
+def test_setting_no_pain_confirmed_with_existing_symptoms_returns_409(client):
+    date = today()
+    client.post(
+        f"/api/days/{date}/symptoms",
+        json={"body_location": "left knee", "intensity_1_to_10": 3, "type": "muscle_soreness"},
+    )
+
+    resp = client.patch(f"/api/days/{date}/no-pain-confirmed", json={"no_pain_confirmed": True})
+    assert resp.status_code == 409
+
+
+def test_creating_a_symptom_clears_no_pain_confirmed_to_null(client):
+    date = today()
+    client.patch(f"/api/days/{date}/no-pain-confirmed", json={"no_pain_confirmed": True})
+    assert client.get(f"/api/days/{date}").json()["no_pain_confirmed"] is True
+
+    client.post(
+        f"/api/days/{date}/symptoms",
+        json={"body_location": "left knee", "intensity_1_to_10": 3, "type": "muscle_soreness"},
+    )
+
+    assert client.get(f"/api/days/{date}").json()["no_pain_confirmed"] is None
+
+
+def test_completeness_symptoms_true_via_no_pain_confirmed_alone(client):
+    date = today()
+    client.patch(f"/api/days/{date}/no-pain-confirmed", json={"no_pain_confirmed": True})
+
+    body = client.get(f"/api/days/{date}").json()
+    assert body["symptoms"] == []
+    assert body["completeness"]["symptoms"] is True
+
+
 def test_patch_recomputes_recall_confidence(client, test_db):
     old_date = today() - dt.timedelta(days=10)
 

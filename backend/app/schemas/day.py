@@ -35,6 +35,9 @@ class DayResponse(BaseModel):
     nutrition: NutritionRead | None
     recovery: list[RecoveryRead]
     symptoms: list[SymptomRead]
+    # NULL = not answered, true = athlete confirmed no pain that day (spec.md
+    # section 4). Cleared back to NULL by logging any symptom for the date.
+    no_pain_confirmed: bool | None
     completeness: Completeness
 
 

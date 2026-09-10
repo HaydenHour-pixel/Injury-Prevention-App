@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { createSymptom, deleteSymptom } from "../api/client";
+import { useEffect, useState } from "react";
+import { createSymptom, deleteSymptom, setNoPainConfirmed } from "../api/client";
 import type { PainOnset, PainType, SymptomCreate, SymptomRead } from "../api/types";
 import { useSectionForm } from "../hooks/useSectionForm";
 import { isPastLocalDate, todayLocalDateString } from "../lib/localDate";
@@ -25,8 +25,29 @@ const ONSET_OPTIONS: { value: PainOnset; label: string }[] = [
 type DraftSymptom = Partial<SymptomCreate>;
 const EMPTY_DRAFT: DraftSymptom = { limiting: false, active: true };
 
-function noPainKey(date: string): string {
+function noPainCacheKey(date: string): string {
   return `athlete-tracker:no-pain-confirmed:${date}`;
+}
+
+function readNoPainCache(date: string): boolean {
+  try {
+    return localStorage.getItem(noPainCacheKey(date)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeNoPainCache(date: string, value: boolean): void {
+  try {
+    if (value) {
+      localStorage.setItem(noPainCacheKey(date), "1");
+    } else {
+      localStorage.removeItem(noPainCacheKey(date));
+    }
+  } catch {
+    // Quota exceeded or storage unavailable — the confirmation is still
+    // persisted server-side; this cache is only for perceived responsiveness.
+  }
 }
 
 /**
@@ -35,44 +56,59 @@ function noPainKey(date: string): string {
  * push for same-day entry, and make the cost of backdating visible rather
  * than blocking it.
  *
- * NOTE: unlike recovery's method_type='none', there is no schema
- * representation for "confirmed no pain" — spec.md section 4 treats "no
- * symptom rows" as that state, which is indistinguishable from "haven't
- * checked yet" at the API level, and Symptom.intensity_1_to_10 is NOT NULL
- * with a 1-10 range, so there's no valid row to POST for "no pain" the way
- * recovery does. "No pain today" below is a local-only acknowledgment
- * (localStorage, per date) purely for the athlete's own UI feedback — it is
- * NOT visible in completeness, the day payload, or from any other device.
+ * "No pain today" persists to `daily_entry.no_pain_confirmed` (spec.md
+ * section 4) — an unlogged painful day must not read the same, at
+ * calibration time, as an explicit confirmation. localStorage here is only
+ * an optimistic-UI cache: it paints "confirmed" instantly on tap and
+ * survives an app close/reopen during the brief in-flight window, but the
+ * `noPainConfirmed` prop (sourced from the day payload) is always resynced
+ * to match the server the moment it's known.
  */
 export function SymptomsCard({
   date,
   rows,
+  noPainConfirmed,
   onSaved,
 }: {
   date: string;
   rows: SymptomRead[];
+  noPainConfirmed: boolean | null;
   onSaved: () => void;
 }) {
   const [adding, setAdding] = useState(false);
-  const [noPainConfirmed, setNoPainConfirmed] = useState(() => {
-    try {
-      return localStorage.getItem(noPainKey(date)) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [optimisticNoPain, setOptimisticNoPain] = useState(() => readNoPainCache(date));
   const form = useSectionForm<DraftSymptom>(date, "symptoms", EMPTY_DRAFT);
   const backdated = isPastLocalDate(date);
   const isToday = date === todayLocalDateString();
 
-  function handleNoPainToday() {
+  useEffect(() => {
+    // The server value just arrived (initial load, or after a reload
+    // triggered by this tap or by logging a symptom elsewhere) — resync the
+    // cache and drop any stale optimism so a later legitimate clear-to-null
+    // isn't masked by a leftover "confirmed" cache entry.
+    writeNoPainCache(date, noPainConfirmed === true);
+    setOptimisticNoPain(noPainConfirmed === true);
+  }, [date, noPainConfirmed]);
+
+  const displayedNoPain = noPainConfirmed === true || optimisticNoPain;
+
+  async function handleNoPainToday() {
+    setSaving(true);
+    setSaveError(null);
+    setOptimisticNoPain(true);
+    writeNoPainCache(date, true);
     try {
-      localStorage.setItem(noPainKey(date), "1");
-    } catch {
-      // localStorage unavailable — the visual state below still updates for
-      // this session, which is the main point.
+      await setNoPainConfirmed(date, true);
+      onSaved();
+    } catch (err) {
+      setOptimisticNoPain(false);
+      writeNoPainCache(date, false);
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
     }
-    setNoPainConfirmed(true);
   }
 
   const canSave =
@@ -84,11 +120,9 @@ export function SymptomsCard({
     if (result.ok) {
       form.reset(EMPTY_DRAFT);
       setAdding(false);
-      try {
-        localStorage.removeItem(noPainKey(date));
-      } catch {
-        // ignore
-      }
+      // The backend clears a standing no_pain_confirmed to NULL when a
+      // symptom is created; onSaved's reload brings that back as a fresh
+      // `noPainConfirmed` prop, which the effect above resyncs the cache to.
       onSaved();
     }
   }
@@ -107,23 +141,31 @@ export function SymptomsCard({
       )}
 
       {rows.length === 0 && !adding && (
-        <div className="mb-2 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={handleNoPainToday}
-            className={`h-12 rounded border text-sm font-semibold ${
-              noPainConfirmed ? "border-good bg-good/15 text-good" : "border-border bg-canvas text-ink"
-            }`}
-          >
-            {noPainConfirmed ? "✓ No pain logged" : isToday ? "No pain today" : "No pain"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="h-12 rounded border border-accent bg-accent/10 text-sm font-semibold text-accent"
-          >
-            + Log symptom
-          </button>
+        <div className="mb-2 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleNoPainToday}
+              disabled={saving || displayedNoPain}
+              className={`h-12 rounded border text-sm font-semibold disabled:opacity-80 ${
+                displayedNoPain
+                  ? "border-good bg-good/15 text-good"
+                  : "border-border bg-canvas text-ink"
+              }`}
+            >
+              {displayedNoPain ? "✓ No pain logged" : isToday ? "No pain today" : "No pain"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="h-12 rounded border border-accent bg-accent/10 text-sm font-semibold text-accent"
+            >
+              + Log symptom
+            </button>
+          </div>
+          {saveError && (
+            <SaveStatusBadge status="error" error={saveError} onRetry={handleNoPainToday} />
+          )}
         </div>
       )}
 

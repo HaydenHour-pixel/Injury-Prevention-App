@@ -14,3 +14,13 @@ import os
 # per-athlete data. Hayden is on the US east coast for the MVP validation
 # window; override via env var if that's wrong.
 ATHLETE_TIMEZONE = os.environ.get("ATHLETE_TIMEZONE", "America/New_York")
+
+# CORS: an explicit allow-list, not a wildcard — the frontend's dev origin by
+# default, plus whatever the deployed origin turns out to be once this is on
+# Fly.io. Comma-separated, so a deployment sets one env var rather than
+# needing a code change.
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
