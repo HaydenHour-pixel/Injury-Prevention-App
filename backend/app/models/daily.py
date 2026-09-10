@@ -107,8 +107,12 @@ class DailyEntry(CreatedAtMixin, Base):
     recovery_methods: Mapped[list[RecoveryMethod]] = relationship(
         back_populates="daily_entry", cascade="all, delete-orphan", passive_deletes=True
     )
+    # Default cascade (no delete-orphan): symptom rows are calibration labels
+    # (spec.md section 10) and must survive deletion of their daily_entry. The
+    # FK is ondelete="SET NULL"; deleting this daily_entry unlinks its symptoms
+    # rather than destroying them.
     symptoms: Mapped[list[Symptom]] = relationship(
-        back_populates="daily_entry", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="daily_entry", passive_deletes=True
     )
 
 
@@ -154,6 +158,12 @@ class Sleep(ProvenanceMixin, Base):
     # are the same night; the crossing of midnight is implied, not stored.
     bedtime: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
     wake_time: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
+    # Set explicitly at entry, never inferred from duration or time of day.
+    # False (the default) means this is the primary sleep session for the date;
+    # which row scoring uses when more than one is present is a slice 2 decision.
+    is_nap: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     source: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     daily_entry: Mapped[DailyEntry] = relationship(back_populates="sleep_records")

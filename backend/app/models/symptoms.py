@@ -55,8 +55,14 @@ class PainProfile(Base):
     # spec.md section 6 ("same location, 2+ episodes").
     episode_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Default cascade (no delete-orphan): removing a symptom from this list, or
+    # deleting the profile, unlinks the symptom rather than destroying them.
+    # Regrouping symptoms between episodes is an expected operation, and symptom
+    # rows are calibration labels (spec.md section 10) — the least replaceable
+    # data in the app. The FK itself is ondelete="SET NULL"; this must agree with
+    # it rather than escalate a NULL-out into a delete at the ORM level.
     symptoms: Mapped[list[Symptom]] = relationship(
-        back_populates="pain_profile", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="pain_profile", passive_deletes=True
     )
 
 
@@ -72,8 +78,12 @@ class Symptom(ProvenanceMixin, Base):
     athlete_id: Mapped[int] = mapped_column(
         ForeignKey("athlete.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    daily_entry_id: Mapped[int] = mapped_column(
-        ForeignKey("daily_entry.id", ondelete="CASCADE"), nullable=False, index=True
+    # Nullable, ondelete="SET NULL": a symptom must survive its daily_entry being
+    # deleted. athlete_id and date are sufficient identity on their own, and
+    # symptom rows are the calibration labels in spec.md section 10 — the least
+    # replaceable data in the app.
+    daily_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("daily_entry.id", ondelete="SET NULL"), nullable=True, index=True
     )
     date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
 
@@ -91,7 +101,7 @@ class Symptom(ProvenanceMixin, Base):
         ForeignKey("pain_profile.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
-    daily_entry: Mapped[DailyEntry] = relationship(back_populates="symptoms")
+    daily_entry: Mapped[DailyEntry | None] = relationship(back_populates="symptoms")
     pain_profile: Mapped[PainProfile | None] = relationship(back_populates="symptoms")
     recovery_methods: Mapped[list[RecoveryMethod]] = relationship(back_populates="symptom")
 

@@ -270,23 +270,153 @@ def test_foreign_keys_are_enforced(session):
     session.rollback()
 
 
-def test_daily_entry_cascades_to_children_on_delete(session):
+def test_daily_entry_cascades_to_training_sleep_nutrition_recovery(session):
     athlete = make_athlete(session)
     entry = make_daily_entry(session, athlete, dt.date(2026, 9, 1))
-    training = Training(
+    training = Training(athlete_id=athlete.id, daily_entry_id=entry.id, date=entry.date, mileage=5.0)
+    sleep = Sleep(athlete_id=athlete.id, daily_entry_id=entry.id, date=entry.date, hours=7.0)
+    nutrition = Nutrition(athlete_id=athlete.id, daily_entry_id=entry.id, date=entry.date, protein_g=140.0)
+    recovery = RecoveryMethod(
         athlete_id=athlete.id,
         daily_entry_id=entry.id,
         date=entry.date,
-        mileage=5.0,
+        method_type=RecoveryMethodType.FOAM_ROLL.value,
     )
-    session.add(training)
+    session.add_all([training, sleep, nutrition, recovery])
     session.commit()
-    training_id = training.id
+    ids = (training.id, sleep.id, nutrition.id, recovery.id)
 
     session.delete(entry)
     session.commit()
 
-    assert session.get(Training, training_id) is None
+    assert session.get(Training, ids[0]) is None
+    assert session.get(Sleep, ids[1]) is None
+    assert session.get(Nutrition, ids[2]) is None
+    assert session.get(RecoveryMethod, ids[3]) is None
+
+
+def test_daily_entry_deletion_unlinks_symptom_but_does_not_delete_it(session):
+    """spec.md section 10: symptom rows are calibration labels and are the least
+    replaceable data in the app. Deleting the daily_entry they were logged
+    against must not destroy them."""
+    athlete = make_athlete(session)
+    entry = make_daily_entry(session, athlete, dt.date(2026, 9, 1))
+    symptom = Symptom(
+        athlete_id=athlete.id,
+        daily_entry_id=entry.id,
+        date=entry.date,
+        body_location="left achilles",
+        intensity_1_to_10=5,
+        type=PainType.DULL_ACHE.value,
+    )
+    session.add(symptom)
+    session.commit()
+    symptom_id = symptom.id
+
+    session.delete(entry)
+    session.commit()
+
+    persisted = session.get(Symptom, symptom_id)
+    assert persisted is not None
+    assert persisted.daily_entry_id is None
+    # Identity survives on athlete_id and date even without the daily_entry link.
+    assert persisted.athlete_id == athlete.id
+    assert persisted.date == dt.date(2026, 9, 1)
+
+
+def test_pain_profile_deletion_unlinks_symptom_but_does_not_delete_it(session):
+    athlete = make_athlete(session)
+    entry = make_daily_entry(session, athlete, dt.date(2026, 9, 1))
+    profile = PainProfile(
+        athlete_id=athlete.id, body_location="left achilles", onset_date=entry.date, episode_number=1
+    )
+    session.add(profile)
+    session.flush()
+
+    symptom = Symptom(
+        athlete_id=athlete.id,
+        daily_entry_id=entry.id,
+        date=entry.date,
+        body_location="left achilles",
+        intensity_1_to_10=5,
+        type=PainType.DULL_ACHE.value,
+        pain_profile_id=profile.id,
+    )
+    session.add(symptom)
+    session.commit()
+    symptom_id = symptom.id
+
+    session.delete(profile)
+    session.commit()
+
+    persisted = session.get(Symptom, symptom_id)
+    assert persisted is not None
+    assert persisted.pain_profile_id is None
+
+
+def test_removing_symptom_from_pain_profile_unlinks_not_deletes(session):
+    """Regrouping symptoms between episodes is an expected operation: the ORM
+    relationship must not be delete-orphan, or de-associating a symptom would
+    destroy it instead of unlinking it."""
+    athlete = make_athlete(session)
+    entry = make_daily_entry(session, athlete, dt.date(2026, 9, 1))
+    profile = PainProfile(
+        athlete_id=athlete.id, body_location="left achilles", onset_date=entry.date, episode_number=1
+    )
+    symptom = Symptom(
+        athlete_id=athlete.id,
+        daily_entry_id=entry.id,
+        date=entry.date,
+        body_location="left achilles",
+        intensity_1_to_10=5,
+        type=PainType.DULL_ACHE.value,
+    )
+    profile.symptoms.append(symptom)
+    session.add(profile)
+    session.commit()
+    symptom_id = symptom.id
+
+    profile.symptoms.remove(symptom)
+    session.commit()
+
+    persisted = session.get(Symptom, symptom_id)
+    assert persisted is not None
+    assert persisted.pain_profile_id is None
+
+
+def test_athlete_deletion_cascades_everything(session):
+    athlete = make_athlete(session)
+    entry = make_daily_entry(session, athlete, dt.date(2026, 9, 1))
+    profile = AthleteProfile(athlete_id=athlete.id)
+    pain_profile = PainProfile(
+        athlete_id=athlete.id, body_location="left achilles", onset_date=entry.date
+    )
+    session.add(profile)
+    session.add(pain_profile)
+    session.flush()
+
+    symptom = Symptom(
+        athlete_id=athlete.id,
+        daily_entry_id=entry.id,
+        date=entry.date,
+        body_location="left achilles",
+        intensity_1_to_10=5,
+        type=PainType.DULL_ACHE.value,
+        pain_profile_id=pain_profile.id,
+    )
+    session.add(symptom)
+    session.commit()
+    ids = (entry.id, profile.id, pain_profile.id, symptom.id)
+
+    session.delete(athlete)
+    session.commit()
+
+    assert session.get(DailyEntry, ids[0]) is None
+    assert session.get(AthleteProfile, ids[1]) is None
+    assert session.get(PainProfile, ids[2]) is None
+    # athlete_id also cascades on symptom directly, so it is gone too, not
+    # merely unlinked (unlike the daily_entry/pain_profile cases above).
+    assert session.get(Symptom, ids[3]) is None
 
 
 def test_recovery_method_symptom_link_restricts_athlete_change_but_not_delete(session):
