@@ -9,4 +9,6 @@ dist/
 desktop.ini
 *.egg-info/
 .pytest_cache/
+*.tsbuildinfo
+frontend/vite.config.d.ts
 

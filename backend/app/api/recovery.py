@@ -7,12 +7,10 @@ There is no `source` column on this table (spec.md section 2 lists no source
 field for recovery_method): recovery is always athlete-entered, so
 source_confidence is fixed to the manual value.
 
-ASSUMPTION FLAGGED FOR CONFIRMATION: spec.md section 3's recall-decay table
-has no row for recovery methods. When a felt intensity is logged for the
-session, this treats it like training's subjective effort (same reasoning:
-a felt rating, not a fact); otherwise the row is treated as objective
-(duration/time applied, akin to mileage or bedtime). This fills a genuine gap
-in the spec, not a documented rule.
+spec.md section 3's row-level scope rule: a row's recall_confidence is
+governed by its subjective field (`intensity_1_to_10`) when present, and is
+objective (1.0) otherwise. `duration_minutes` and `applied_at` are listed as
+objective fields directly in that section.
 """
 
 from __future__ import annotations

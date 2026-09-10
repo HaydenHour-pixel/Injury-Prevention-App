@@ -6,10 +6,10 @@ column for itemization, and the day payload exposes `nutrition` as one object
 for a date that already has a nutrition row is rejected with 409; PATCH the
 existing row instead.
 
-ASSUMPTION FLAGGED FOR CONFIRMATION: spec.md section 3's recall-decay table
-has no row for nutrition at all. Treated here as "subjective effort" (same-day
-window) since recalling exact intake is a self-report task, not an objective
-measurement — but this is a genuine gap in the spec, not a documented rule.
+spec.md section 3 lists "nutrition recall" as its own field group, sharing the
+subjective-effort curve (same-day window) — it decays for a different reason
+(episodic memory of discrete events, not a felt quality fading) but at a
+comparable rate, so it's treated as that group here.
 """
 
 from __future__ import annotations
