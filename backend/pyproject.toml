@@ -14,6 +14,11 @@ dependencies = [
     "sqlalchemy==2.0.36",
     "alembic==1.14.0",
     "pydantic==2.10.4",
+    # zoneinfo (stdlib) has no timezone data of its own on platforms without a
+    # system tz database, notably Windows. tzdata supplies it; no code, just
+    # the IANA database, maintained by the same packaging authority as the
+    # standard library.
+    "tzdata==2025.2",
 ]
 
 [project.optional-dependencies]
