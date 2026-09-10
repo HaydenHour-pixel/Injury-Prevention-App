@@ -103,17 +103,44 @@ Monday is three days of lag.
 
 | Field group | Natural window | Decay |
 |---|---|---|
-| Objective (mileage, elevation, bedtime, wake time) | any | none, always 1.0 |
+| Objective (mileage, elevation, bedtime, wake time, duration, macros) | any | none, always 1.0 |
 | Subjective effort (`intensity_1_to_10`) | same day | 1.0 same day, 0.85 +1d, 0.6 +2d, 0.4 beyond |
-| Sleep quality | next morning | 1.0 through next morning, then as above |
+| Sleep quality | next morning | 1.0 through next morning, then the effort curve shifted one day |
 | Symptom intensity | same day | 1.0 same day, 0.7 +1d, 0.4 beyond |
 | Body sentiment | same day | same as symptom |
+| Nutrition recall | same day | same curve as subjective effort |
+
+Nutrition is listed separately because it decays by a different mechanism. It is
+episodic memory of discrete events, not a felt quality fading. The rate happens to be
+comparable, so it shares the effort curve, but the two should be recalibrated
+independently rather than assumed to move together.
+
+### Row-level scope
+
+The database stores one `recall_confidence` per row, but a single row can span field
+groups: `training` holds objective mileage alongside a subjective intensity rating.
+
+**The stored value describes that row's subjective fields only.** Objective fields are
+always treated as confidence 1.0 regardless of what the row's column says.
+
+Which group governs the stored value: if the row has a subjective field
+(`intensity_1_to_10`, `quality_1_to_10`), that field's group applies. Otherwise the row
+is objective and the value is 1.0.
+
+Without this rule, a training row whose intensity was entered three days late would
+carry `recall_confidence = 0.4`, and consequence 1 below would exclude its mileage from
+the training-load baseline. Mileage is the same number whenever it was typed. Excluding
+it corrupts the baseline behind `acute_chronic_ratio`, which carries weight 0.25 in the
+risk formula.
 
 ### Consequences
 
 1. **High-lag subjective values are excluded from baseline and variance computation.**
    They regress toward the athlete's mean, which would artificially suppress observed
    variance and inflate model confidence. They remain visible in the UI.
+
+   This applies to subjective fields only, per the row-level scope rule above. Objective
+   fields on the same row are never excluded on recall grounds.
 
 2. **Retrospective symptom entries are down-weighted as calibration labels.** Pain memory
    anchors to peak and endpoint. A symptom row with `recall_confidence < 0.7` contributes
