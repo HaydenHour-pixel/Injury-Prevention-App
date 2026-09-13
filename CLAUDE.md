@@ -45,7 +45,7 @@ change seems locally convenient.
 
 | Layer     | Choice                                                   |
 |-----------|----------------------------------------------------------|
-| Backend   | Python 3.12, FastAPI, SQLAlchemy 2.x (typed, `Mapped[]`)  |
+| Backend   | Python 3.11, FastAPI, SQLAlchemy 2.x (typed, `Mapped[]`)  |
 | Database  | SQLite, single file, Alembic for migrations               |
 | Frontend  | React 18 + TypeScript + Vite                              |
 | Styling   | Tailwind                                                  |
